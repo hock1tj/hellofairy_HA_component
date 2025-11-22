@@ -114,6 +114,7 @@ class HelloFairyLamp:
 
                 # Subscribe to notifications
                 await self._client.start_notify(NTF_UUID, self._notification_handler)
+                await asyncio.sleep(0.15)
 
                 self._conn_state = ConnState.CONNECTED
                 _LOGGER.debug("Connected to %s with notifications enabled", self._address)

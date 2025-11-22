@@ -65,7 +65,9 @@ class HelloFairyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_bluetooth(self, discovery_info):
+    async def async_step_bluetooth(
+        self, discovery_info: BluetoothServiceInfoBleak
+    ) -> FlowResult:
         """Handle a flow initialized by Bluetooth discovery."""
         self._discovery_info = discovery_info
 
