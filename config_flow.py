@@ -1,126 +1,116 @@
-"""Config flow for hello-fairy."""
+"""Config flow for Hello Fairy."""
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import voluptuous as vol
+
 from homeassistant import config_entries
-from homeassistant.components.bluetooth import (
-    BluetoothServiceInfoBleak,
-    async_get_scanner,
-)
-from homeassistant.components.bluetooth import BluetoothScanningMode
-from habluetooth.scanner import create_bleak_scanner
-from homeassistant.const import CONF_MAC, CONF_NAME
+from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
+from homeassistant.const import CONF_NAME
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers import device_registry as dr
 
-from .const import CONF_ENTRY_MANUAL, CONF_ENTRY_METHOD, CONF_ENTRY_SCAN, DOMAIN
-from .hello_fairy import BleakError, discover_hello_fairy_lamps
+from .const import CONF_ADDRESS, DOMAIN
 
-_LOGGER = logging.getLogger(__name__)
+DEFAULT_NAME = "Hello Fairy"
 
 
+class HelloFairyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for Hello Fairy."""
 
-class HelloFairy_btConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore
-    """Handle a config flow for hello fairy."""
+    VERSION = 1
 
-    VERSION = 2
-    CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_POLL
+    def __init__(self) -> None:
+        self._discovery_info: BluetoothServiceInfoBleak | None = None
 
-    @property
-    def data_schema(self) -> vol.Schema:
-        """Return the data schema for integration."""
-        return vol.Schema({vol.Required(CONF_NAME): str, vol.Required(CONF_MAC): str})
-
-    async def async_step_bluetooth(
-        self, discovery_info: BluetoothServiceInfoBleak
-    ) -> FlowResult:
-        """Handle the bluetooth discovery step."""
-        _LOGGER.debug("Discovered bluetooth device: %s", discovery_info)
-        await self.async_set_unique_id(dr.format_mac(discovery_info.address))
-        self._abort_if_unique_id_configured()
-
-        self.devices = [
-            f"{discovery_info.address} (Hello Fairy Model)"
-        ]
-        return await self.async_step_device()
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
+        """Return the options flow."""
+        return HelloFairyOptionsFlow(config_entry)
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle a flow initialized by the user."""
+        """Handle the initial step initiated by the user."""
+        errors: dict[str, str] = {}
 
-        if user_input is None:
-            schema = {
-                vol.Required(CONF_ENTRY_METHOD): vol.In(
-                    [CONF_ENTRY_SCAN, CONF_ENTRY_MANUAL]
-                )
-            }
-            return self.async_show_form(step_id="user", data_schema=vol.Schema(schema))
-        method = user_input[CONF_ENTRY_METHOD]
-        _LOGGER.debug(f"Method selected: {method}")
-        if method == CONF_ENTRY_SCAN:
-            return await self.async_step_scan()
-        else:
-            self.devices = []
-            return await self.async_step_device()
+        if user_input is not None:
+            address = user_input[CONF_ADDRESS].upper()
+            name = user_input.get(CONF_NAME) or DEFAULT_NAME
 
-    async def async_step_scan(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle the discovery by scanning."""
-        errors = {}
-        if user_input is None:
-            return self.async_show_form(step_id="scan")
-        scanner = async_get_scanner(self.hass)
-        _LOGGER.debug("Preparing for a scan")
-        # first we check if scanner from HA bluetooth is enabled
-        try:
-            if len(scanner.discovered_devices) >= 1:
-                # raises Attribute errors if bluetooth not configured
-                _LOGGER.debug(f"Using HA scanner {scanner}")
-        except AttributeError:
-            scanner = create_bleak_scanner(BluetoothScanningMode.ACTIVE, None)
-            _LOGGER.debug("Using bleak scanner through HA")
-        try:
-            _LOGGER.debug("Starting a scan for Hello Fairy devices")
-            ble_devices = await discover_hello_fairy_lamps(scanner)
-        except BleakError as err:
-            _LOGGER.error(f"Bluetooth connection error while trying to scan: {err}")
-            errors["base"] = "BleakError"
-            return self.async_show_form(step_id="scan", errors=errors)
+            await self.async_set_unique_id(address)
+            self._abort_if_unique_id_configured()
 
-        if not ble_devices:
-            return self.async_abort(reason="no_devices_found")
-        self.devices = [
-            f"{dev['ble_device'].address} (Hello Fairy Model)" for dev in ble_devices
-        ]
-        # TODO: filter existing devices ?
-
-        return await self.async_step_device()
-
-    async def async_step_device(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle setting up a device."""
-        # _LOGGER.debug(f"User_input: {user_input}")
-        if not user_input:
-            schema_mac = str
-            if self.devices:
-                schema_mac = vol.In(self.devices)
-            schema = vol.Schema(
-                {vol.Required(CONF_NAME): str, vol.Required(CONF_MAC): schema_mac}
+            return self.async_create_entry(
+                title=name,
+                data={
+                    CONF_ADDRESS: address,
+                },
             )
-            return self.async_show_form(step_id="device", data_schema=schema)
 
-        user_input[CONF_MAC] = user_input[CONF_MAC][:17]
-        unique_id = dr.format_mac(user_input[CONF_MAC])
-        _LOGGER.debug(f"Hello Fairy UniqueID: {unique_id}")
-        _LOGGER.debug(f"userInput: {user_input}")
+        data_schema = vol.Schema(
+            {
+                vol.Required(CONF_ADDRESS): str,
+                vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
+            }
+        )
 
-        await self.async_set_unique_id(unique_id)
+        return self.async_show_form(
+            step_id="user",
+            data_schema=data_schema,
+            errors=errors,
+        )
+
+    async def async_step_bluetooth(
+        self, discovery_info: BluetoothServiceInfoBleak
+    ) -> FlowResult:
+        """Handle a flow initialized by Bluetooth discovery."""
+        self._discovery_info = discovery_info
+
+        address = discovery_info.address.upper()
+        name = discovery_info.name or DEFAULT_NAME
+
+        await self.async_set_unique_id(address)
         self._abort_if_unique_id_configured()
 
-        return self.async_create_entry(title=user_input[CONF_NAME], data=user_input)
+        self.context["title_placeholders"] = {"name": name}
+
+        return await self.async_step_confirm()
+
+    async def async_step_confirm(self, user_input=None):
+        """Confirm adding the device."""
+        if user_input is not None:
+            address = self._discovery_info.address.upper()
+            name = self._discovery_info.name or DEFAULT_NAME
+
+            return self.async_create_entry(
+                title=name,
+                data={CONF_ADDRESS: address},
+            )
+
+        return self.async_show_form(
+            step_id="confirm",
+            description_placeholders={
+                "name": self._discovery_info.name or DEFAULT_NAME
+            }
+        )
+
+
+
+
+class HelloFairyOptionsFlow(config_entries.OptionsFlow):
+    """Options flow for Hello Fairy (currently empty, placeholder)."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        self._entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle options flow."""
+        # No options for now – just close.
+        return self.async_create_entry(title="", data=self._entry.options)

@@ -1,56 +1,45 @@
+"""Hello Fairy integration init."""
+from __future__ import annotations
+
 import logging
+from typing import Final
 
-from homeassistant.components.bluetooth import (
-    async_ble_device_from_address,
-    async_scanner_count,
-)
+from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_MAC
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import DOMAIN
+from .const import CONF_ADDRESS, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+PLATFORMS: Final[list[Platform]] = [Platform.LIGHT]
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up hello-fairy from a config entry."""
-    _LOGGER.debug(f"integration async setup entry: {entry.as_dict()}")
+    """Set up Hello Fairy from a config entry."""
     hass.data.setdefault(DOMAIN, {})
+    address = entry.data[CONF_ADDRESS].upper()
 
-    # Find ble device here so that we can raise device not found on startup
-    address = entry.data.get(CONF_MAC)
+    _LOGGER.debug("Setting up Hello Fairy entry %s (%s)", entry.entry_id, address)
 
-    # try to get ble_device using HA scanner first
-    ble_device = async_ble_device_from_address(hass, address.upper(), connectable=True)
-    _LOGGER.debug(f"BLE device through HA bt: {ble_device}")
-    if ble_device is None:
-        # Check if any HA scanner on:
-        count_scanners = async_scanner_count(hass, connectable=True)
-        _LOGGER.debug(f"Count of BLE scanners in HA bt: {count_scanners}")
-        if count_scanners < 1:
-            raise ConfigEntryNotReady(
-                "No bluetooth scanner detected. \
-                Enable the bluetooth integration or ensure an esphome device \
-                is running as a bluetooth proxy"
-            )
-        raise ConfigEntryNotReady(f"Could not find Yeelight with address {address}")
+    hass.data[DOMAIN][entry.entry_id] = {
+        CONF_ADDRESS: address,
+    }
 
-    hass.data[DOMAIN][entry.entry_id] = ble_device
-    
-    await hass.config_entries.async_forward_entry_setups(entry, ["light"])
-
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    _LOGGER.debug("async unload entry")
-    unload_ok = await hass.config_entries.async_forward_entry_unload(entry, "light")
-
+    """Unload a Hello Fairy config entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-        if not hass.config_entries.async_entries(DOMAIN):
-            hass.data.pop(DOMAIN)
+        entry_data = hass.data[DOMAIN].pop(entry.entry_id, None)
+        _LOGGER.debug("Device unloaded")
+        #if entry_data and (address := entry_data.get(CONF_ADDRESS)):
+            # Let HA rediscover this address again in the future
+            # bluetooth.async_rediscover_address(hass, address)
+            #_LOGGER.debug("Triggered rediscovery for %s", address)
+
     return unload_ok
