@@ -36,9 +36,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         entry_data = hass.data[DOMAIN].pop(entry.entry_id, None)
-        if entry_data and (address := entry_data.get(CONF_ADDRESS)):
+        _LOGGER.debug("Device unloaded")
+        #if entry_data and (address := entry_data.get(CONF_ADDRESS)):
             # Let HA rediscover this address again in the future
-            bluetooth.async_rediscover_address(hass, address)
-            _LOGGER.debug("Triggered rediscovery for %s", address)
+            # bluetooth.async_rediscover_address(hass, address)
+            #_LOGGER.debug("Triggered rediscovery for %s", address)
 
     return unload_ok

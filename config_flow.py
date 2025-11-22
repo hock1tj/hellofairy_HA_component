@@ -65,9 +65,7 @@ class HelloFairyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_bluetooth(
-        self, discovery_info: BluetoothServiceInfoBleak
-    ) -> FlowResult:
+    async def async_step_bluetooth(self, discovery_info):
         """Handle a flow initialized by Bluetooth discovery."""
         self._discovery_info = discovery_info
 
@@ -75,20 +73,31 @@ class HelloFairyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         name = discovery_info.name or DEFAULT_NAME
 
         await self.async_set_unique_id(address)
-        self._abort_if_unique_id_configured(
-            updates={
-                CONF_ADDRESS: address,
-            }
-        )
+        self._abort_if_unique_id_configured()
 
         self.context["title_placeholders"] = {"name": name}
 
-        return self.async_create_entry(
-            title=name,
-            data={
-                CONF_ADDRESS: address,
-            },
+        return await self.async_step_confirm()
+
+    async def async_step_confirm(self, user_input=None):
+        """Confirm adding the device."""
+        if user_input is not None:
+            address = self._discovery_info.address.upper()
+            name = self._discovery_info.name or DEFAULT_NAME
+
+            return self.async_create_entry(
+                title=name,
+                data={CONF_ADDRESS: address},
+            )
+
+        return self.async_show_form(
+            step_id="confirm",
+            description_placeholders={
+                "name": self._discovery_info.name or DEFAULT_NAME
+            }
         )
+
+
 
 
 class HelloFairyOptionsFlow(config_entries.OptionsFlow):
