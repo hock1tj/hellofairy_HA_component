@@ -1,13 +1,16 @@
 {
   "config": {
     "step": {
-      "confirm": {
-        "description": "[%key:common::config_flow::description::confirm_setup%]"
+      "user": {
+        "title": "Hello Fairy",
+        "description": "Set up your Hello Fairy BLE lights.",
+        "data": {
+          "address": "Bluetooth address / UUID",
+          "name": "Name"
+        }
       }
     },
-    "abort": {
-      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]",
-      "no_devices_found": "[%key:common::config_flow::abort::no_devices_found%]"
-    }
+    "error": {},
+    "abort": {}
   }
 }
